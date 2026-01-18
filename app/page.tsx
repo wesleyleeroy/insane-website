@@ -145,7 +145,7 @@ export default function Home() {
           willChange: "transform",
           transform: "translateZ(0)",
         }}
-        src="/videos/background-60fps.mp4"
+        src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/videos/background-60fps.mp4`}
         onError={() => setIsReady(true)}
       />
 
