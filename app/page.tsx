@@ -146,6 +146,7 @@ export default function Home() {
           transform: "translateZ(0)",
         }}
         src="/videos/background-60fps.mp4"
+        onError={() => setIsReady(true)}
       />
 
       {/* Welcome Text - Slides up on scroll */}
