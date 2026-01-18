@@ -12,9 +12,9 @@ export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const welcomeTextRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
-  const [basePath, setBasePath] = useState('');
+  const [basePath, setBasePath] = useState<string | null>(null);
 
-  // Set basePath on mount
+  // Set basePath on mount - must happen before video tries to load
   useEffect(() => {
     setBasePath(getBasePath());
   }, []);
@@ -145,21 +145,23 @@ export default function Home() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
-      {/* Background Video */}
-      <video
-        ref={videoRef}
-        muted
-        playsInline
-        preload="auto"
-        className={`absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-500 ${isReady ? "opacity-100" : "opacity-0"
-          }`}
-        style={{
-          willChange: "transform",
-          transform: "translateZ(0)",
-        }}
-        src={`${basePath}/videos/background-60fps.mp4`}
-        onError={() => setIsReady(true)}
-      />
+      {/* Background Video - only render when basePath is determined */}
+      {basePath !== null && (
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          preload="auto"
+          className={`absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-500 ${isReady ? "opacity-100" : "opacity-0"
+            }`}
+          style={{
+            willChange: "transform",
+            transform: "translateZ(0)",
+          }}
+          src={`${basePath}/videos/background-60fps.mp4`}
+          onError={() => setIsReady(true)}
+        />
+      )}
 
       {/* Welcome Text - Slides up on scroll */}
       <div
