@@ -20,9 +20,17 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // Don't run until basePath is set (video is rendered)
+    if (basePath === null) return;
+
     const video = videoRef.current;
     const welcomeText = welcomeTextRef.current;
     if (!video) return;
+
+    // Check if video is already loaded (cached) and set ready immediately
+    if (video.readyState >= 3) {
+      setIsReady(true);
+    }
 
     const startOffset = 0.1;
     const maxScroll = 4 * window.innerHeight; // 500vh - 100vh = 400vh of scroll
@@ -141,7 +149,7 @@ export default function Home() {
       window.removeEventListener("wheel", handleWheel);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [basePath]); // Re-run when basePath changes (video becomes available)
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black">
