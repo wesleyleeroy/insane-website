@@ -144,7 +144,14 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden">
+    <div className="relative h-screen w-screen overflow-hidden bg-black">
+      {/* Loading indicator - shows while basePath is being determined */}
+      {basePath === null && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-white text-xl">Loading...</div>
+        </div>
+      )}
+
       {/* Background Video - only render when basePath is determined */}
       {basePath !== null && (
         <video
