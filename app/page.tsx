@@ -2,10 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 
+// Determine basePath at runtime for asset loading
+const getBasePath = () => {
+  if (typeof window === 'undefined') return '';
+  return window.location.hostname.includes('github.io') ? '/insane-website' : '';
+};
+
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const welcomeTextRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
+  const [basePath, setBasePath] = useState('');
+
+  // Set basePath on mount
+  useEffect(() => {
+    setBasePath(getBasePath());
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -145,7 +157,7 @@ export default function Home() {
           willChange: "transform",
           transform: "translateZ(0)",
         }}
-        src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/videos/background-60fps.mp4`}
+        src={`${basePath}/videos/background-60fps.mp4`}
         onError={() => setIsReady(true)}
       />
 
