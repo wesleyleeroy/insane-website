@@ -10,6 +10,7 @@ const getBasePath = () => {
 
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const blackOverlayRef = useRef<HTMLDivElement>(null);
   const welcomeTextRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const [basePath, setBasePath] = useState<string | null>(null);
@@ -24,8 +25,9 @@ export default function Home() {
     if (basePath === null) return;
 
     const video = videoRef.current;
+    const blackOverlay = blackOverlayRef.current;
     const welcomeText = welcomeTextRef.current;
-    if (!video) return;
+    if (!video || !blackOverlay) return;
 
     // Check if video is already loaded (cached) and set ready immediately
     if (video.readyState >= 3) {
@@ -33,7 +35,13 @@ export default function Home() {
     }
 
     const startOffset = 0.1;
-    const maxScroll = 4 * window.innerHeight; // 500vh - 100vh = 400vh of scroll
+
+    // Phase 1: Video playback scroll (4 viewport heights)
+    const videoScrollMax = 4 * window.innerHeight;
+    // Phase 2: Black overlay rises from bottom (2 viewport heights)
+    const overlayScrollMax = 2 * window.innerHeight;
+    // Total scroll range
+    const maxScroll = videoScrollMax + overlayScrollMax;
 
     // Virtual scroll position (not tied to browser scroll)
     let virtualScroll = 0;
@@ -65,6 +73,15 @@ export default function Home() {
       welcomeText.style.opacity = opacity.toString();
     };
 
+    const updateOverlayPosition = (riseProgress: number) => {
+      if (!blackOverlay) return;
+      // Rise the black overlay from bottom to cover the screen
+      // riseProgress: 0 = overlay hidden below screen, 1 = overlay fully covers screen
+      // translateY goes from 100% (below) to 0% (covering)
+      const translateY = 100 - (riseProgress * 100);
+      blackOverlay.style.transform = `translateY(${translateY}%)`;
+    };
+
     const setup = async () => {
       // Prevent native scrolling
       document.body.style.overflow = "hidden";
@@ -89,6 +106,7 @@ export default function Home() {
 
       setIsReady(true);
       updateTextPosition(0);
+      updateOverlayPosition(0);
     };
 
     // Handle wheel events directly - bypasses momentum scrolling
@@ -101,12 +119,24 @@ export default function Home() {
       virtualScroll += e.deltaY;
       virtualScroll = Math.max(0, Math.min(maxScroll, virtualScroll));
 
-      // Calculate progress and update video
-      const progress = virtualScroll / maxScroll;
       const videoDuration = video.duration || 8;
 
-      video.currentTime = startOffset + (videoDuration - startOffset) * progress;
-      updateTextPosition(progress);
+      if (virtualScroll <= videoScrollMax) {
+        // Phase 1: Video playback
+        const videoProgress = virtualScroll / videoScrollMax;
+        video.currentTime = startOffset + (videoDuration - startOffset) * videoProgress;
+        updateTextPosition(videoProgress);
+        updateOverlayPosition(0); // Overlay stays hidden
+      } else {
+        // Phase 2: Black overlay rises from bottom
+        // Keep video at the end
+        video.currentTime = videoDuration;
+        updateTextPosition(1); // Text stays at final position
+
+        // Calculate rise progress (0 to 1)
+        const riseProgress = (virtualScroll - videoScrollMax) / overlayScrollMax;
+        updateOverlayPosition(riseProgress);
+      }
     };
 
     // Handle keyboard navigation
@@ -131,10 +161,21 @@ export default function Home() {
         return;
       }
 
-      const progress = virtualScroll / maxScroll;
       const videoDuration = video.duration || 8;
-      video.currentTime = startOffset + (videoDuration - startOffset) * progress;
-      updateTextPosition(progress);
+
+      if (virtualScroll <= videoScrollMax) {
+        // Phase 1: Video playback
+        const videoProgress = virtualScroll / videoScrollMax;
+        video.currentTime = startOffset + (videoDuration - startOffset) * videoProgress;
+        updateTextPosition(videoProgress);
+        updateOverlayPosition(0);
+      } else {
+        // Phase 2: Black overlay rises
+        video.currentTime = videoDuration;
+        updateTextPosition(1);
+        const riseProgress = (virtualScroll - videoScrollMax) / overlayScrollMax;
+        updateOverlayPosition(riseProgress);
+      }
     };
 
     setup();
@@ -160,20 +201,29 @@ export default function Home() {
         </div>
       )}
 
-      {/* Background Video - only render when basePath is determined */}
+      {/* 
+          VIDEO CROP SETTINGS (FIXED - baked into file):
+          - Original: 1920x1080
+          - Cropped:  1884x1060 (removed 36px from right, 20px from bottom)
+          
+          TO APPLY THE SAME CROP TO A NEW VIDEO, use this ffmpeg command:
+          ffmpeg -i INPUT.mp4 -vf "crop=1884:1060:0:0" -c:v libx264 -preset slow -crf 18 OUTPUT.mp4
+          
+          This crops from top-left corner: width=1884, height=1060, x=0, y=0
+      */}
       {basePath !== null && (
         <video
           ref={videoRef}
           muted
           playsInline
           preload="auto"
-          className={`absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-500 ${isReady ? "opacity-100" : "opacity-0"
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${isReady ? "opacity-100" : "opacity-0"
             }`}
           style={{
             willChange: "transform",
             transform: "translateZ(0)",
           }}
-          src={`${basePath}/videos/background-60fps.mp4`}
+          src={`${basePath}/videos/background-60fps-cropped-optimized.mp4`}
           onError={() => setIsReady(true)}
         />
       )}
@@ -200,6 +250,16 @@ export default function Home() {
           Welcome
         </h1>
       </div>
+
+      {/* Black Overlay - rises from bottom after video ends */}
+      <div
+        ref={blackOverlayRef}
+        className="absolute inset-0 w-full h-full bg-black z-20"
+        style={{
+          willChange: "transform",
+          transform: "translateY(100%)",
+        }}
+      />
     </div>
   );
 }
