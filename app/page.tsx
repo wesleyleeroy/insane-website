@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { RevealWaveImage } from "@/components/ui/reveal-wave-image";
 
 // Determine basePath at runtime for asset loading
 const getBasePath = () => {
@@ -10,8 +11,8 @@ const getBasePath = () => {
 
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const blackOverlayRef = useRef<HTMLDivElement>(null);
   const welcomeTextRef = useRef<HTMLDivElement>(null);
+  const revealImageRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const [basePath, setBasePath] = useState<string | null>(null);
 
@@ -25,9 +26,8 @@ export default function Home() {
     if (basePath === null) return;
 
     const video = videoRef.current;
-    const blackOverlay = blackOverlayRef.current;
     const welcomeText = welcomeTextRef.current;
-    if (!video || !blackOverlay) return;
+    if (!video) return;
 
     // Check if video is already loaded (cached) and set ready immediately
     if (video.readyState >= 3) {
@@ -38,48 +38,75 @@ export default function Home() {
 
     // Phase 1: Video playback scroll (4 viewport heights)
     const videoScrollMax = 4 * window.innerHeight;
-    // Phase 2: Black overlay rises from bottom (2 viewport heights)
-    const overlayScrollMax = 2 * window.innerHeight;
+    // Phase 2: Text continues sliding up (2 viewport heights)
+    const textExitScrollMax = 2 * window.innerHeight;
     // Total scroll range
-    const maxScroll = videoScrollMax + overlayScrollMax;
+    const maxScroll = videoScrollMax + textExitScrollMax;
 
     // Virtual scroll position (not tied to browser scroll)
     let virtualScroll = 0;
 
-    const updateTextPosition = (progress: number) => {
-      if (!welcomeText) return;
-      // Text starts below center (invisible) and slides UP to center as you scroll
-      // At progress 0: starts at +20vh below center
-      // At progress 0.6: arrives at center (0) and stays there
+    const revealImage = revealImageRef.current;
 
-      const arrivalPoint = 0.6; // Text arrives at center at 60% scroll progress (slower)
+    const updateTextPosition = (progress: number, exitProgress: number = 0) => {
+      if (!welcomeText) return;
+      // Text animation is ALWAYS "slide up from below to center"
+      // When scrolling DOWN: text rises from below (+20vh) to center (0) then continues up off screen (-60vh)
+      // When scrolling UP: the SAME animation plays - text appears from below and rises to center
+
+      // For this to work, we treat exitProgress as a position along the SAME trajectory:
+      // - At exitProgress 0: text is at center
+      // - At exitProgress 1: text is at the "exit" position
+      // When scrolling back up, exitProgress decreases, so we need the text to re-enter from below
+
+      const arrivalPoint = 0.6; // Text arrives at center at 60% scroll progress
       const startOffset = 20; // Start 20vh below center
+      const exitOffset = 20; // Exit position: 20vh BELOW center (same as entrance)
+
+      // Calculate the "re-entry" threshold - when scrolling back, text should come from below
+      const reentryThreshold = 0.3; // When exitProgress < 0.3, start showing text from below
 
       let translateY: number;
       let opacity: number;
 
-      if (progress < arrivalPoint) {
-        // Sliding up phase: from +20vh to 0
+      if (exitProgress > 0) {
+        // We're in the exit/re-entry phase (after video ends)
+        if (exitProgress > reentryThreshold) {
+          // Text is mostly gone or fully exited - keep it hidden below
+          translateY = startOffset; // Position below center (same as initial entrance)
+          opacity = 0;
+        } else {
+          // Re-entering: text slides up from below to center
+          // exitProgress goes from reentryThreshold -> 0 as we scroll up
+          const reentryProgress = 1 - (exitProgress / reentryThreshold); // 0 -> 1 as exitProgress decreases
+          translateY = startOffset * (1 - reentryProgress); // startOffset -> 0
+          opacity = reentryProgress; // 0 -> 1
+        }
+      } else if (progress < arrivalPoint) {
+        // Initial entrance phase (scrolling down): from +20vh to 0
         const slideProgress = progress / arrivalPoint;
         translateY = startOffset * (1 - slideProgress); // 20vh -> 0
         opacity = slideProgress; // 0 -> 1
       } else {
-        // After arrival: stay at center
+        // After arrival but before exit phase: stay at center
         translateY = 0;
         opacity = 1;
       }
 
       welcomeText.style.transform = `translate(-50%, -50%) translateY(${translateY}vh)`;
       welcomeText.style.opacity = opacity.toString();
-    };
 
-    const updateOverlayPosition = (riseProgress: number) => {
-      if (!blackOverlay) return;
-      // Rise the black overlay from bottom to cover the screen
-      // riseProgress: 0 = overlay hidden below screen, 1 = overlay fully covers screen
-      // translateY goes from 100% (below) to 0% (covering)
-      const translateY = 100 - (riseProgress * 100);
-      blackOverlay.style.transform = `translateY(${translateY}%)`;
+      // Update reveal image opacity (fades in as text exits)
+      if (revealImage) {
+        revealImage.style.opacity = exitProgress.toString();
+        // Enable pointer-events once the reveal image is visible enough
+        revealImage.style.pointerEvents = exitProgress > 0.5 ? "auto" : "none";
+      }
+
+      // Fade out video as reveal image fades in
+      if (video) {
+        video.style.opacity = exitProgress === 0 ? "1" : (1 - exitProgress).toString();
+      }
     };
 
     const setup = async () => {
@@ -105,8 +132,7 @@ export default function Home() {
       } catch (e) { }
 
       setIsReady(true);
-      updateTextPosition(0);
-      updateOverlayPosition(0);
+      updateTextPosition(0, 0);
     };
 
     // Handle wheel events directly - bypasses momentum scrolling
@@ -125,17 +151,15 @@ export default function Home() {
         // Phase 1: Video playback
         const videoProgress = virtualScroll / videoScrollMax;
         video.currentTime = startOffset + (videoDuration - startOffset) * videoProgress;
-        updateTextPosition(videoProgress);
-        updateOverlayPosition(0); // Overlay stays hidden
+        updateTextPosition(videoProgress, 0);
       } else {
-        // Phase 2: Black overlay rises from bottom
+        // Phase 2: Text continues sliding up off screen
         // Keep video at the end
         video.currentTime = videoDuration;
-        updateTextPosition(1); // Text stays at final position
 
-        // Calculate rise progress (0 to 1)
-        const riseProgress = (virtualScroll - videoScrollMax) / overlayScrollMax;
-        updateOverlayPosition(riseProgress);
+        // Calculate exit progress (0 to 1)
+        const exitProgress = (virtualScroll - videoScrollMax) / textExitScrollMax;
+        updateTextPosition(1, exitProgress);
       }
     };
 
@@ -167,14 +191,12 @@ export default function Home() {
         // Phase 1: Video playback
         const videoProgress = virtualScroll / videoScrollMax;
         video.currentTime = startOffset + (videoDuration - startOffset) * videoProgress;
-        updateTextPosition(videoProgress);
-        updateOverlayPosition(0);
+        updateTextPosition(videoProgress, 0);
       } else {
-        // Phase 2: Black overlay rises
+        // Phase 2: Text continues sliding up off screen
         video.currentTime = videoDuration;
-        updateTextPosition(1);
-        const riseProgress = (virtualScroll - videoScrollMax) / overlayScrollMax;
-        updateOverlayPosition(riseProgress);
+        const exitProgress = (virtualScroll - videoScrollMax) / textExitScrollMax;
+        updateTextPosition(1, exitProgress);
       }
     };
 
@@ -251,15 +273,28 @@ export default function Home() {
         </h1>
       </div>
 
-      {/* Black Overlay - rises from bottom after video ends */}
+      {/* Reveal Wave Image - Fades in after Welcome text exits */}
       <div
-        ref={blackOverlayRef}
-        className="absolute inset-0 w-full h-full bg-black z-20"
+        ref={revealImageRef}
+        className="absolute inset-0 z-20"
         style={{
-          willChange: "transform",
-          transform: "translateY(100%)",
+          opacity: 0,
+          willChange: "opacity",
+          pointerEvents: "none",
         }}
-      />
+      >
+        <RevealWaveImage
+          src="https://images.unsplash.com/photo-1518837695005-2083093ee35b?q=80&w=2070&auto=format&fit=crop"
+          waveSpeed={0.2}
+          waveFrequency={0.7}
+          waveAmplitude={0.5}
+          revealRadius={0.5}
+          revealSoftness={1}
+          pixelSize={2}
+          mouseRadius={0.4}
+          className="w-full h-full"
+        />
+      </div>
     </div>
   );
 }
