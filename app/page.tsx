@@ -12,7 +12,9 @@ const getBasePath = () => {
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const welcomeTextRef = useRef<HTMLDivElement>(null);
+  const darkOverlayRef = useRef<HTMLDivElement>(null);
   const revealImageRef = useRef<HTMLDivElement>(null);
+  const elCapitanRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const [basePath, setBasePath] = useState<string | null>(null);
 
@@ -27,6 +29,7 @@ export default function Home() {
 
     const video = videoRef.current;
     const welcomeText = welcomeTextRef.current;
+    const elCapitanText = elCapitanRef.current;
     if (!video) return;
 
     // Check if video is already loaded (cached) and set ready immediately
@@ -40,13 +43,27 @@ export default function Home() {
     const videoScrollMax = 4 * window.innerHeight;
     // Phase 2: Text continues sliding up (2 viewport heights)
     const textExitScrollMax = 2 * window.innerHeight;
+    // Phase 3: EL CAPITAN text slides up (3 viewport heights)
+    const elCapitanScrollMax = 3 * window.innerHeight;
     // Total scroll range
-    const maxScroll = videoScrollMax + textExitScrollMax;
+    const maxScroll = videoScrollMax + textExitScrollMax + elCapitanScrollMax;
 
     // Virtual scroll position (not tied to browser scroll)
     let virtualScroll = 0;
 
     const revealImage = revealImageRef.current;
+    const darkOverlay = darkOverlayRef.current;
+
+    const updateElCapitanPosition = (progress: number) => {
+      if (!elCapitanText) return;
+      // EL CAPITAN slides up from below the viewport (100vh) to center (0) as you scroll
+      // progress: 0 = at bottom (100vh below center), 1 = at center
+      const translateY = 100 * (1 - progress); // 100vh -> 0
+      const opacity = progress; // 0 -> 1
+
+      elCapitanText.style.transform = `translate(-50%, -50%) translateY(${translateY}vh)`;
+      elCapitanText.style.opacity = opacity.toString();
+    };
 
     const updateTextPosition = (progress: number, exitProgress: number = 0) => {
       if (!welcomeText) return;
@@ -96,11 +113,21 @@ export default function Home() {
       welcomeText.style.transform = `translate(-50%, -50%) translateY(${translateY}vh)`;
       welcomeText.style.opacity = opacity.toString();
 
-      // Update reveal image opacity (fades in as text exits)
+      // Update dark overlay and reveal image opacity (staged fade-in)
+      // First half of exit: dark overlay fades in (exitProgress 0 -> 0.5 maps to opacity 0 -> 1)
+      // Second half of exit: wave image fades in (exitProgress 0.5 -> 1 maps to opacity 0 -> 1)
+      if (darkOverlay) {
+        // Dark overlay fades in during first half, stays fully visible after
+        const darkOpacity = Math.min(1, exitProgress * 2); // 0->0.5 becomes 0->1
+        darkOverlay.style.opacity = darkOpacity.toString();
+      }
+
       if (revealImage) {
-        revealImage.style.opacity = exitProgress.toString();
+        // Wave image fades in during second half
+        const waveOpacity = Math.max(0, (exitProgress - 0.5) * 2); // 0.5->1 becomes 0->1
+        revealImage.style.opacity = waveOpacity.toString();
         // Enable pointer-events once the reveal image is visible enough
-        revealImage.style.pointerEvents = exitProgress > 0.5 ? "auto" : "none";
+        revealImage.style.pointerEvents = waveOpacity > 0.5 ? "auto" : "none";
       }
 
       // Fade out video as reveal image fades in
@@ -133,6 +160,7 @@ export default function Home() {
 
       setIsReady(true);
       updateTextPosition(0, 0);
+      updateElCapitanPosition(0);
     };
 
     // Handle wheel events directly - bypasses momentum scrolling
@@ -152,7 +180,8 @@ export default function Home() {
         const videoProgress = virtualScroll / videoScrollMax;
         video.currentTime = startOffset + (videoDuration - startOffset) * videoProgress;
         updateTextPosition(videoProgress, 0);
-      } else {
+        updateElCapitanPosition(0);
+      } else if (virtualScroll <= videoScrollMax + textExitScrollMax) {
         // Phase 2: Text continues sliding up off screen
         // Keep video at the end
         video.currentTime = videoDuration;
@@ -160,6 +189,14 @@ export default function Home() {
         // Calculate exit progress (0 to 1)
         const exitProgress = (virtualScroll - videoScrollMax) / textExitScrollMax;
         updateTextPosition(1, exitProgress);
+        updateElCapitanPosition(0);
+      } else {
+        // Phase 3: EL CAPITAN slides up
+        video.currentTime = videoDuration;
+        updateTextPosition(1, 1); // Keep Welcome text fully exited
+
+        const elCapitanProgress = (virtualScroll - videoScrollMax - textExitScrollMax) / elCapitanScrollMax;
+        updateElCapitanPosition(elCapitanProgress);
       }
     };
 
@@ -192,11 +229,20 @@ export default function Home() {
         const videoProgress = virtualScroll / videoScrollMax;
         video.currentTime = startOffset + (videoDuration - startOffset) * videoProgress;
         updateTextPosition(videoProgress, 0);
-      } else {
+        updateElCapitanPosition(0);
+      } else if (virtualScroll <= videoScrollMax + textExitScrollMax) {
         // Phase 2: Text continues sliding up off screen
         video.currentTime = videoDuration;
         const exitProgress = (virtualScroll - videoScrollMax) / textExitScrollMax;
         updateTextPosition(1, exitProgress);
+        updateElCapitanPosition(0);
+      } else {
+        // Phase 3: EL CAPITAN slides up
+        video.currentTime = videoDuration;
+        updateTextPosition(1, 1);
+
+        const elCapitanProgress = (virtualScroll - videoScrollMax - textExitScrollMax) / elCapitanScrollMax;
+        updateElCapitanPosition(elCapitanProgress);
       }
     };
 
@@ -273,7 +319,19 @@ export default function Home() {
         </h1>
       </div>
 
-      {/* Reveal Wave Image - Fades in after Welcome text exits */}
+      {/* Dark Overlay - Fades in first after Welcome text exits */}
+      <div
+        ref={darkOverlayRef}
+        className="absolute inset-0 bg-black"
+        style={{
+          zIndex: 15,
+          opacity: 0,
+          willChange: "opacity",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Reveal Wave Image - Fades in after dark overlay */}
       <div
         ref={revealImageRef}
         className="absolute inset-0 z-20"
@@ -294,6 +352,29 @@ export default function Home() {
           mouseRadius={0.4}
           className="w-full h-full"
         />
+      </div>
+
+      {/* EL CAPITAN Text - Slides up at the bottom of scroll */}
+      <div
+        ref={elCapitanRef}
+        className="absolute left-1/2 top-1/2 z-30 pointer-events-none"
+        style={{
+          transform: "translate(-50%, -50%) translateY(100vh)",
+          opacity: 0,
+          willChange: "transform, opacity",
+        }}
+      >
+        <h1
+          className="text-white font-bold tracking-wider whitespace-nowrap"
+          style={{
+            fontSize: "clamp(4rem, 15vw, 12rem)",
+            textShadow: "0 4px 30px rgba(0, 0, 0, 0.5), 0 0 80px rgba(0, 0, 0, 0.3)",
+            letterSpacing: "0.15em",
+            fontFamily: "var(--font-fraunces), serif",
+          }}
+        >
+          EL CAPITAN
+        </h1>
       </div>
     </div>
   );
