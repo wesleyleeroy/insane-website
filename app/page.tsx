@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { RevealWaveImage } from "@/components/ui/reveal-wave-image";
+import SplitText from "@/components/ui/split-text";
 
 // Determine basePath at runtime for asset loading
 const getBasePath = () => {
@@ -15,8 +16,10 @@ export default function Home() {
   const darkOverlayRef = useRef<HTMLDivElement>(null);
   const revealImageRef = useRef<HTMLDivElement>(null);
   const elCapitanRef = useRef<HTMLDivElement>(null);
+  const trumpVideoRef = useRef<HTMLVideoElement>(null);
   const [isReady, setIsReady] = useState(false);
   const [basePath, setBasePath] = useState<string | null>(null);
+  const [showElCapitan, setShowElCapitan] = useState(false);
 
   // Set basePath on mount - must happen before video tries to load
   useEffect(() => {
@@ -43,26 +46,132 @@ export default function Home() {
     const videoScrollMax = 4 * window.innerHeight;
     // Phase 2: Text continues sliding up (2 viewport heights)
     const textExitScrollMax = 2 * window.innerHeight;
-    // Phase 3: EL CAPITAN text slides up (3 viewport heights)
-    const elCapitanScrollMax = 3 * window.innerHeight;
+    // Phase 3: EL CAPITAN text slides up (1 viewport height - triggers quickly)
+    const elCapitanSlideUpMax = 1 * window.innerHeight;
+    // Phase 4: EL CAPITAN text slides right (1 viewport height)
+    const elCapitanSlideRightMax = 1 * window.innerHeight;
+    // Phase 5: Trump video scroll-controlled (4 viewport heights for full video scrub)
+    const trumpVideoFadeMax = 4 * window.innerHeight;
     // Total scroll range
-    const maxScroll = videoScrollMax + textExitScrollMax + elCapitanScrollMax;
+    const maxScroll = videoScrollMax + textExitScrollMax + elCapitanSlideUpMax + elCapitanSlideRightMax + trumpVideoFadeMax;
 
     // Virtual scroll position (not tied to browser scroll)
     let virtualScroll = 0;
 
     const revealImage = revealImageRef.current;
     const darkOverlay = darkOverlayRef.current;
+    const trumpVideo = trumpVideoRef.current;
 
-    const updateElCapitanPosition = (progress: number) => {
+    // Track current animation state
+    let elCapitanState: 'hidden' | 'sliding-up' | 'centered' | 'sliding-right' | 'exited' = 'hidden';
+    let pendingSlideRight = false; // Queue slide-right if triggered during slide-up
+    let trumpVideoTriggered = false; // Track if Trump video has been triggered
+
+    const triggerSlideRight = () => {
       if (!elCapitanText) return;
-      // EL CAPITAN slides up from below the viewport (100vh) to center (0) as you scroll
-      // progress: 0 = at bottom (100vh below center), 1 = at center
-      const translateY = 100 * (1 - progress); // 100vh -> 0
-      const opacity = progress; // 0 -> 1
+      elCapitanState = 'sliding-right';
+      elCapitanText.style.transform = `translate(-50%, -50%) translateX(100vw) translateY(0vh)`;
+      elCapitanText.style.opacity = '1';
+      setTimeout(() => {
+        if (elCapitanState === 'sliding-right') {
+          elCapitanState = 'exited';
+        }
+      }, 1000);
+    };
 
-      elCapitanText.style.transform = `translate(-50%, -50%) translateY(${translateY}vh)`;
-      elCapitanText.style.opacity = opacity.toString();
+    const updateElCapitanPosition = (phase: number) => {
+      if (!elCapitanText) return;
+      // phase: 0 = not yet triggered (hidden below)
+      // phase: 1 = trigger slide up animation
+      // phase: 2 = trigger slide right animation
+
+      // Add CSS transition for smooth automatic animation
+      elCapitanText.style.transition = 'transform 1s ease-out, opacity 0.8s ease-out';
+
+      if (phase === 0 && elCapitanState !== 'hidden') {
+        // Reset to hidden state (scrolling back up)
+        elCapitanState = 'hidden';
+        pendingSlideRight = false; // Cancel any pending slide-right
+        elCapitanText.style.transform = `translate(-50%, -50%) translateX(0vw) translateY(100vh)`;
+        elCapitanText.style.opacity = '0';
+        setShowElCapitan(false); // Reset split text animation
+      } else if (phase === 1 && elCapitanState === 'hidden') {
+        // Trigger slide up animation automatically
+        elCapitanState = 'sliding-up';
+        pendingSlideRight = false;
+        elCapitanText.style.transform = `translate(-50%, -50%) translateX(0vw) translateY(0vh)`;
+        elCapitanText.style.opacity = '1';
+        setShowElCapitan(true); // Trigger split text animation
+        // Mark as centered after animation completes
+        setTimeout(() => {
+          if (elCapitanState === 'sliding-up') {
+            elCapitanState = 'centered';
+            // If slide-right was requested during slide-up, trigger it now
+            if (pendingSlideRight) {
+              pendingSlideRight = false;
+              triggerSlideRight();
+            }
+          }
+        }, 1000);
+      } else if (phase === 2 && elCapitanState === 'centered') {
+        // Trigger slide right animation (only if already centered)
+        triggerSlideRight();
+      } else if (phase === 2 && elCapitanState === 'sliding-up') {
+        // Queue slide-right to happen after slide-up completes
+        pendingSlideRight = true;
+      } else if (phase === 1 && elCapitanState === 'exited') {
+        // Scrolling back - bring it back to center from right
+        pendingSlideRight = false;
+        elCapitanState = 'centered';
+        elCapitanText.style.transform = `translate(-50%, -50%) translateX(0vw) translateY(0vh)`;
+        elCapitanText.style.opacity = '1';
+        setShowElCapitan(true); // Re-trigger split text animation
+      } else if (phase === 1 && elCapitanState === 'sliding-right') {
+        // Scrolling back while sliding right - return to center
+        pendingSlideRight = false;
+        elCapitanState = 'centered';
+        elCapitanText.style.transform = `translate(-50%, -50%) translateX(0vw) translateY(0vh)`;
+        elCapitanText.style.opacity = '1';
+        setShowElCapitan(true); // Re-trigger split text animation
+      }
+    };
+
+    const updateTrumpVideo = (progress: number) => {
+      if (!trumpVideo) return;
+      // progress: 0 = not visible, >0 = visible and scrubbing through video
+
+      if (progress > 0) {
+        // Show and scrub through video based on scroll progress
+        if (!trumpVideoTriggered) {
+          trumpVideoTriggered = true;
+          trumpVideo.style.transition = 'opacity 0.5s ease-out';
+          trumpVideo.style.opacity = '1';
+          trumpVideo.style.pointerEvents = 'auto';
+        }
+        // Scrub through video based on scroll progress - only if video is loaded
+        if (trumpVideo.readyState >= 2 && trumpVideo.duration && isFinite(trumpVideo.duration)) {
+          // Ensure video is paused (scrubbing, not playing)
+          if (!trumpVideo.paused) {
+            trumpVideo.pause();
+          }
+          const targetTime = progress * trumpVideo.duration;
+          // Only update if there's a meaningful change to avoid jitter
+          if (Math.abs(trumpVideo.currentTime - targetTime) > 0.01) {
+            trumpVideo.currentTime = targetTime;
+          }
+        }
+      } else {
+        // Hide video
+        if (trumpVideoTriggered) {
+          trumpVideoTriggered = false;
+          trumpVideo.style.transition = 'opacity 0.5s ease-out';
+          trumpVideo.style.opacity = '0';
+          trumpVideo.style.pointerEvents = 'none';
+          if (trumpVideo.readyState >= 2) {
+            trumpVideo.currentTime = 0;
+          }
+        }
+      }
     };
 
     const updateTextPosition = (progress: number, exitProgress: number = 0) => {
@@ -161,6 +270,14 @@ export default function Home() {
       setIsReady(true);
       updateTextPosition(0, 0);
       updateElCapitanPosition(0);
+
+      // Pre-load Trump video for smooth scrubbing
+      if (trumpVideo) {
+        trumpVideo.load();
+        // Ensure it starts paused at the beginning
+        trumpVideo.pause();
+        trumpVideo.currentTime = 0;
+      }
     };
 
     // Handle wheel events directly - bypasses momentum scrolling
@@ -168,6 +285,10 @@ export default function Home() {
       e.preventDefault();
 
       if (!video || video.readyState < 3) return;
+
+      // Ignore trackpad momentum (very small deltaY values are typically momentum)
+      // This makes the video stop immediately when you stop scrolling
+      if (Math.abs(e.deltaY) < 5) return;
 
       // Update virtual scroll position
       virtualScroll += e.deltaY;
@@ -181,6 +302,7 @@ export default function Home() {
         video.currentTime = startOffset + (videoDuration - startOffset) * videoProgress;
         updateTextPosition(videoProgress, 0);
         updateElCapitanPosition(0);
+        updateTrumpVideo(0);
       } else if (virtualScroll <= videoScrollMax + textExitScrollMax) {
         // Phase 2: Text continues sliding up off screen
         // Keep video at the end
@@ -190,13 +312,26 @@ export default function Home() {
         const exitProgress = (virtualScroll - videoScrollMax) / textExitScrollMax;
         updateTextPosition(1, exitProgress);
         updateElCapitanPosition(0);
-      } else {
-        // Phase 3: EL CAPITAN slides up
+        updateTrumpVideo(0);
+      } else if (virtualScroll <= videoScrollMax + textExitScrollMax + elCapitanSlideUpMax) {
+        // Phase 3: EL CAPITAN auto-slides up
         video.currentTime = videoDuration;
         updateTextPosition(1, 1); // Keep Welcome text fully exited
-
-        const elCapitanProgress = (virtualScroll - videoScrollMax - textExitScrollMax) / elCapitanScrollMax;
-        updateElCapitanPosition(elCapitanProgress);
+        updateElCapitanPosition(1); // Trigger slide up animation
+        updateTrumpVideo(0);
+      } else if (virtualScroll <= videoScrollMax + textExitScrollMax + elCapitanSlideUpMax + elCapitanSlideRightMax) {
+        // Phase 4: EL CAPITAN auto-slides right
+        video.currentTime = videoDuration;
+        updateTextPosition(1, 1);
+        updateElCapitanPosition(2); // Trigger slide right animation
+        updateTrumpVideo(0);
+      } else {
+        // Phase 5: Trump video scrubs with scroll
+        video.currentTime = videoDuration;
+        updateTextPosition(1, 1);
+        updateElCapitanPosition(2);
+        const trumpProgress = (virtualScroll - videoScrollMax - textExitScrollMax - elCapitanSlideUpMax - elCapitanSlideRightMax) / trumpVideoFadeMax;
+        updateTrumpVideo(Math.min(1, trumpProgress)); // Progress 0 -> 1
       }
     };
 
@@ -230,19 +365,33 @@ export default function Home() {
         video.currentTime = startOffset + (videoDuration - startOffset) * videoProgress;
         updateTextPosition(videoProgress, 0);
         updateElCapitanPosition(0);
+        updateTrumpVideo(0);
       } else if (virtualScroll <= videoScrollMax + textExitScrollMax) {
         // Phase 2: Text continues sliding up off screen
         video.currentTime = videoDuration;
         const exitProgress = (virtualScroll - videoScrollMax) / textExitScrollMax;
         updateTextPosition(1, exitProgress);
         updateElCapitanPosition(0);
-      } else {
-        // Phase 3: EL CAPITAN slides up
+        updateTrumpVideo(0);
+      } else if (virtualScroll <= videoScrollMax + textExitScrollMax + elCapitanSlideUpMax) {
+        // Phase 3: EL CAPITAN auto-slides up
         video.currentTime = videoDuration;
         updateTextPosition(1, 1);
-
-        const elCapitanProgress = (virtualScroll - videoScrollMax - textExitScrollMax) / elCapitanScrollMax;
-        updateElCapitanPosition(elCapitanProgress);
+        updateElCapitanPosition(1); // Trigger slide up animation
+        updateTrumpVideo(0);
+      } else if (virtualScroll <= videoScrollMax + textExitScrollMax + elCapitanSlideUpMax + elCapitanSlideRightMax) {
+        // Phase 4: EL CAPITAN auto-slides right
+        video.currentTime = videoDuration;
+        updateTextPosition(1, 1);
+        updateElCapitanPosition(2); // Trigger slide right animation
+        updateTrumpVideo(0);
+      } else {
+        // Phase 5: Trump video scrubs with scroll
+        video.currentTime = videoDuration;
+        updateTextPosition(1, 1);
+        updateElCapitanPosition(2);
+        const trumpProgress = (virtualScroll - videoScrollMax - textExitScrollMax - elCapitanSlideUpMax - elCapitanSlideRightMax) / trumpVideoFadeMax;
+        updateTrumpVideo(Math.min(1, trumpProgress)); // Progress 0 -> 1
       }
     };
 
@@ -354,7 +503,7 @@ export default function Home() {
         />
       </div>
 
-      {/* EL CAPITAN Text - Slides up at the bottom of scroll */}
+      {/* EL CAPITAN Text - Slides up at the bottom of scroll with split text animation */}
       <div
         ref={elCapitanRef}
         className="absolute left-1/2 top-1/2 z-30 pointer-events-none"
@@ -373,9 +522,36 @@ export default function Home() {
             fontFamily: "var(--font-fraunces), serif",
           }}
         >
-          EL CAPITAN
+          <SplitText
+            text="EL CAPITAN"
+            delay={80}
+            duration={0.6}
+            ease="easeOut"
+            splitType="chars"
+            from={{ opacity: 0, y: 50, rotateX: -90 }}
+            to={{ opacity: 1, y: 0, rotateX: 0 }}
+            trigger={showElCapitan}
+          />
         </h1>
       </div>
+
+      {/* Trump Video - Scroll-controlled at the very bottom */}
+      {basePath !== null && (
+        <video
+          ref={trumpVideoRef}
+          muted
+          playsInline
+          preload="auto"
+          className="absolute inset-0 w-full h-full object-cover z-40"
+          style={{
+            opacity: 0,
+            willChange: "transform, opacity",
+            transform: "translateZ(0)",
+            pointerEvents: "none",
+          }}
+          src={`${basePath}/videos/trump-video-scrub.mp4`}
+        />
+      )}
     </div>
   );
 }
