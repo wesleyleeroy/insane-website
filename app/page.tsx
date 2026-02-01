@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { RevealWaveImage } from "@/components/ui/reveal-wave-image";
 import SplitText from "@/components/ui/split-text";
+import PrismaticBurst from "@/components/ui/PrismaticBurst";
+import LiquidEther from "@/components/ui/LiquidEther";
 
 // Determine basePath at runtime for asset loading
 const getBasePath = () => {
@@ -17,9 +19,11 @@ export default function Home() {
   const revealImageRef = useRef<HTMLDivElement>(null);
   const elCapitanRef = useRef<HTMLDivElement>(null);
   const trumpVideoRef = useRef<HTMLVideoElement>(null);
+  const liquidEtherRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const [basePath, setBasePath] = useState<string | null>(null);
   const [showElCapitan, setShowElCapitan] = useState(false);
+  const [liquidEtherActive, setLiquidEtherActive] = useState(false);
 
   // Set basePath on mount - must happen before video tries to load
   useEffect(() => {
@@ -52,8 +56,10 @@ export default function Home() {
     const elCapitanSlideRightMax = 1 * window.innerHeight;
     // Phase 5: Trump video scroll-controlled (4 viewport heights for full video scrub)
     const trumpVideoFadeMax = 4 * window.innerHeight;
+    // Phase 6: LiquidEther background (2 viewport heights for exploration)
+    const liquidEtherMax = 2 * window.innerHeight;
     // Total scroll range
-    const maxScroll = videoScrollMax + textExitScrollMax + elCapitanSlideUpMax + elCapitanSlideRightMax + trumpVideoFadeMax;
+    const maxScroll = videoScrollMax + textExitScrollMax + elCapitanSlideUpMax + elCapitanSlideRightMax + trumpVideoFadeMax + liquidEtherMax;
 
     // Virtual scroll position (not tied to browser scroll)
     let virtualScroll = 0;
@@ -61,6 +67,7 @@ export default function Home() {
     const revealImage = revealImageRef.current;
     const darkOverlay = darkOverlayRef.current;
     const trumpVideo = trumpVideoRef.current;
+    const liquidEther = liquidEtherRef.current;
 
     // Track current animation state
     let elCapitanState: 'hidden' | 'sliding-up' | 'centered' | 'sliding-right' | 'exited' = 'hidden';
@@ -136,7 +143,7 @@ export default function Home() {
       }
     };
 
-    const updateTrumpVideo = (progress: number) => {
+    const updateTrumpVideo = (progress: number, shouldFadeOut: boolean = false) => {
       if (!trumpVideo) return;
       // progress: 0 = not visible, >0 = visible and scrubbing through video
 
@@ -160,6 +167,11 @@ export default function Home() {
             trumpVideo.currentTime = targetTime;
           }
         }
+        // Fade out if LiquidEther is visible
+        if (shouldFadeOut) {
+          trumpVideo.style.transition = 'opacity 0.5s ease-out';
+          trumpVideo.style.opacity = '0';
+        }
       } else {
         // Hide video
         if (trumpVideoTriggered) {
@@ -171,6 +183,42 @@ export default function Home() {
             trumpVideo.currentTime = 0;
           }
         }
+      }
+    };
+
+    const updateLiquidEther = (progress: number) => {
+      if (!liquidEther) return;
+      // progress: 0 = not visible, >0 = visible as a separate full screen
+      if (progress > 0) {
+        // Activate the LiquidEther WebGL context
+        setLiquidEtherActive(true);
+
+        // Show LiquidEther as a completely separate screen
+        liquidEther.style.transition = 'opacity 0.5s ease-out';
+        liquidEther.style.opacity = '1';
+        liquidEther.style.pointerEvents = 'auto';
+
+        // Hide ALL other elements to make this a clean separate screen
+        if (video) {
+          video.style.opacity = '0';
+        }
+        if (darkOverlay) {
+          darkOverlay.style.opacity = '0';
+        }
+        if (revealImage) {
+          revealImage.style.opacity = '0';
+        }
+        if (trumpVideo) {
+          trumpVideo.style.opacity = '0';
+          trumpVideo.style.pointerEvents = 'none';
+        }
+      } else {
+        // Deactivate the LiquidEther WebGL context to save resources
+        setLiquidEtherActive(false);
+
+        liquidEther.style.transition = 'opacity 0.5s ease-out';
+        liquidEther.style.opacity = '0';
+        liquidEther.style.pointerEvents = 'none';
       }
     };
 
@@ -303,6 +351,7 @@ export default function Home() {
         updateTextPosition(videoProgress, 0);
         updateElCapitanPosition(0);
         updateTrumpVideo(0);
+        updateLiquidEther(0);
       } else if (virtualScroll <= videoScrollMax + textExitScrollMax) {
         // Phase 2: Text continues sliding up off screen
         // Keep video at the end
@@ -313,25 +362,33 @@ export default function Home() {
         updateTextPosition(1, exitProgress);
         updateElCapitanPosition(0);
         updateTrumpVideo(0);
+        updateLiquidEther(0);
       } else if (virtualScroll <= videoScrollMax + textExitScrollMax + elCapitanSlideUpMax) {
         // Phase 3: EL CAPITAN auto-slides up
         video.currentTime = videoDuration;
         updateTextPosition(1, 1); // Keep Welcome text fully exited
         updateElCapitanPosition(1); // Trigger slide up animation
         updateTrumpVideo(0);
+        updateLiquidEther(0);
       } else if (virtualScroll <= videoScrollMax + textExitScrollMax + elCapitanSlideUpMax + elCapitanSlideRightMax) {
         // Phase 4: EL CAPITAN auto-slides right
         video.currentTime = videoDuration;
         updateTextPosition(1, 1);
         updateElCapitanPosition(2); // Trigger slide right animation
         updateTrumpVideo(0);
-      } else {
+        updateLiquidEther(0);
+      } else if (virtualScroll <= videoScrollMax + textExitScrollMax + elCapitanSlideUpMax + elCapitanSlideRightMax + trumpVideoFadeMax) {
         // Phase 5: Trump video scrubs with scroll
         video.currentTime = videoDuration;
         updateTextPosition(1, 1);
         updateElCapitanPosition(2);
         const trumpProgress = (virtualScroll - videoScrollMax - textExitScrollMax - elCapitanSlideUpMax - elCapitanSlideRightMax) / trumpVideoFadeMax;
         updateTrumpVideo(Math.min(1, trumpProgress)); // Progress 0 -> 1
+        updateLiquidEther(0);
+      } else {
+        // Phase 6: LiquidEther as a completely separate screen
+        const liquidProgress = (virtualScroll - videoScrollMax - textExitScrollMax - elCapitanSlideUpMax - elCapitanSlideRightMax - trumpVideoFadeMax) / liquidEtherMax;
+        updateLiquidEther(Math.min(1, liquidProgress)); // This hides all other elements
       }
     };
 
@@ -366,6 +423,7 @@ export default function Home() {
         updateTextPosition(videoProgress, 0);
         updateElCapitanPosition(0);
         updateTrumpVideo(0);
+        updateLiquidEther(0);
       } else if (virtualScroll <= videoScrollMax + textExitScrollMax) {
         // Phase 2: Text continues sliding up off screen
         video.currentTime = videoDuration;
@@ -373,25 +431,33 @@ export default function Home() {
         updateTextPosition(1, exitProgress);
         updateElCapitanPosition(0);
         updateTrumpVideo(0);
+        updateLiquidEther(0);
       } else if (virtualScroll <= videoScrollMax + textExitScrollMax + elCapitanSlideUpMax) {
         // Phase 3: EL CAPITAN auto-slides up
         video.currentTime = videoDuration;
         updateTextPosition(1, 1);
         updateElCapitanPosition(1); // Trigger slide up animation
         updateTrumpVideo(0);
+        updateLiquidEther(0);
       } else if (virtualScroll <= videoScrollMax + textExitScrollMax + elCapitanSlideUpMax + elCapitanSlideRightMax) {
         // Phase 4: EL CAPITAN auto-slides right
         video.currentTime = videoDuration;
         updateTextPosition(1, 1);
         updateElCapitanPosition(2); // Trigger slide right animation
         updateTrumpVideo(0);
-      } else {
+        updateLiquidEther(0);
+      } else if (virtualScroll <= videoScrollMax + textExitScrollMax + elCapitanSlideUpMax + elCapitanSlideRightMax + trumpVideoFadeMax) {
         // Phase 5: Trump video scrubs with scroll
         video.currentTime = videoDuration;
         updateTextPosition(1, 1);
         updateElCapitanPosition(2);
         const trumpProgress = (virtualScroll - videoScrollMax - textExitScrollMax - elCapitanSlideUpMax - elCapitanSlideRightMax) / trumpVideoFadeMax;
         updateTrumpVideo(Math.min(1, trumpProgress)); // Progress 0 -> 1
+        updateLiquidEther(0);
+      } else {
+        // Phase 6: LiquidEther as a completely separate screen
+        const liquidProgress = (virtualScroll - videoScrollMax - textExitScrollMax - elCapitanSlideUpMax - elCapitanSlideRightMax - trumpVideoFadeMax) / liquidEtherMax;
+        updateLiquidEther(Math.min(1, liquidProgress)); // This hides all other elements
       }
     };
 
@@ -552,6 +618,69 @@ export default function Home() {
           src={`${basePath}/videos/trump-video-scrub.mp4`}
         />
       )}
+
+      {/* Phase 6 Background - Both LiquidEther and PrismaticBurst */}
+      <div
+        ref={liquidEtherRef}
+        className="absolute inset-0 z-50 bg-black"
+        style={{
+          opacity: 0,
+          willChange: "opacity",
+          pointerEvents: "none",
+        }}
+      >
+        {/* LiquidEther as base layer with fluid wave animation */}
+        <LiquidEther
+          colors={['#5227FF', '#FF9FFC', '#B19EEF']}
+          mouseForce={20}
+          cursorSize={100}
+          isViscous
+          viscous={30}
+          iterationsViscous={32}
+          iterationsPoisson={32}
+          resolution={0.5}
+          isBounce={false}
+          autoDemo
+          autoSpeed={0.5}
+          autoIntensity={2.2}
+          takeoverDuration={0.25}
+          autoResumeDelay={3000}
+          autoRampDuration={0.6}
+          isActive={liquidEtherActive}
+          style={{
+            width: '100%',
+            height: '100%',
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'inherit',
+            zIndex: 1
+          }}
+        />
+
+        {/* PrismaticBurst on top with blend mode to show both effects */}
+        <PrismaticBurst
+          animationType="rotate3d"
+          intensity={1.5}
+          speed={0.5}
+          distort={0}
+          paused={false}
+          offset={{ x: 0, y: 0 }}
+          hoverDampness={0.25}
+          rayCount={0}
+          mixBlendMode="overlay"
+          colors={['#ff007a', '#4d3dff', '#ffffff']}
+          isActive={liquidEtherActive}
+          style={{
+            width: '100%',
+            height: '100%',
+            position: 'absolute',
+            inset: 0,
+            zIndex: 2,
+            opacity: 0.5,
+            pointerEvents: 'none'
+          }}
+        />
+      </div>
     </div>
   );
 }
