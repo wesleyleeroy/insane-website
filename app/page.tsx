@@ -651,7 +651,7 @@ export default function Home() {
             width: '100%',
             height: '100%',
             position: 'absolute',
-            inset: 0,
+            inset: '0',
             pointerEvents: 'inherit',
             zIndex: 1
           }}
@@ -674,7 +674,7 @@ export default function Home() {
             width: '100%',
             height: '100%',
             position: 'absolute',
-            inset: 0,
+            inset: '0',
             zIndex: 2,
             opacity: 0.5,
             pointerEvents: 'none'
