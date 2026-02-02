@@ -15,7 +15,7 @@ declare module 'ogl' {
             autoClear?: boolean;
             webgl?: number;
         });
-        gl: WebGL2RenderingContext & { canvas: HTMLCanvasElement };
+        gl: any;
         setSize(width: number, height: number): void;
         render(options: { scene: any; camera?: any; target?: any; update?: boolean; sort?: boolean; frustumCull?: boolean; clear?: boolean }): void;
     }
