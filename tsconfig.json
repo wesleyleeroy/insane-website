@@ -43,7 +43,7 @@
   ],
   "exclude": [
     "node_modules",
-    "components/ui/LiquidEther.tsx",
-    "components/ui/PrismaticBurst.tsx"
+    "components/ui/LiquidEther.jsx",
+    "components/ui/PrismaticBurst.jsx"
   ]
 }
