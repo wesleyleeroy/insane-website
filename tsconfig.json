@@ -42,6 +42,8 @@
     "**/*.mts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "components/ui/LiquidEther.tsx",
+    "components/ui/PrismaticBurst.tsx"
   ]
 }
